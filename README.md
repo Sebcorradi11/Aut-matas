@@ -29,7 +29,7 @@ Se eligieron tres tipos distintos de autómatas para cubrir la mayor diversidad 
 |---|---|---|---|
 | `afd_termina_en_01.py` | Autómata Finito Determinista (AFD) | Cadenas binarias que terminan en `01` | ✓ Completo |
 | `afnd_contiene_ab.py`  | Autómata Finito No Determinista (AFND) | Cadenas sobre `{a,b}` que contienen la subcadena `ab` | ✓ Completo |
-| `ap_anbn.py`           | Autómata con Pila (AP / PDA) | Lenguaje `L = { aⁿbⁿ | n ≥ 1 }` | Pendiente |
+| `ap_anbn.py`           | Autómata con Pila (AP / PDA) | Lenguaje `L = { aⁿbⁿ | n ≥ 1 }` | ✓ Completo |
 
 ### 1. AFD — Cadenas terminadas en `01`
 
@@ -114,8 +114,8 @@ python afd_termina_en_01.py
 # Ejecutar el AFND
 python afnd_contiene_ab.py
 
-# El siguiente script se agregará en la próxima entrega:
-# python ap_anbn.py
+# Ejecutar el AP
+python ap_anbn.py
 ```
 
 ---
