@@ -25,11 +25,11 @@ Se eligieron tres tipos distintos de autómatas para cubrir la mayor diversidad 
 
 ## 🤖 Autómatas implementados
 
-| Archivo | Tipo | Lenguaje reconocido |
-|---|---|---|
-| `afd_termina_en_01.py` | Autómata Finito Determinista (AFD) | Cadenas binarias que terminan en `01` |
-| `afnd_contiene_ab.py`  | Autómata Finito No Determinista (AFND) | Cadenas sobre `{a,b}` que contienen la subcadena `ab` |
-| `ap_anbn.py`           | Autómata con Pila (AP / PDA) | Lenguaje `L = { aⁿbⁿ | n ≥ 1 }` |
+| Archivo | Tipo | Lenguaje reconocido | Estado |
+|---|---|---|---|
+| `afd_termina_en_01.py` | Autómata Finito Determinista (AFD) | Cadenas binarias que terminan en `01` | ✓ Completo |
+| `afnd_contiene_ab.py`  | Autómata Finito No Determinista (AFND) | Cadenas sobre `{a,b}` que contienen la subcadena `ab` | Pendiente |
+| `ap_anbn.py`           | Autómata con Pila (AP / PDA) | Lenguaje `L = { aⁿbⁿ | n ≥ 1 }` | Pendiente |
 
 ### 1. AFD — Cadenas terminadas en `01`
 
@@ -108,10 +108,12 @@ cd <nombre-del-repo>
 # Instalar dependencias
 pip install graphviz
 
-# Ejecutar cada autómata
-python3 afd_termina_en_01.py
-python3 afnd_contiene_ab.py
-python3 ap_anbn.py
+# Ejecutar el AFD (único autómata implementado por ahora)
+python afd_termina_en_01.py
+
+# Los siguientes scripts se agregarán en próximas entregas:
+# python afnd_contiene_ab.py
+# python ap_anbn.py
 ```
 
 ---
@@ -161,8 +163,9 @@ Los tres scripts siguen la **misma estructura** para facilitar la comparación e
 
 ## 👥 Autores
 
-- *Nombre Apellido* — DNI: *XXXXXXXX*
-- *Nombre Apellido* — DNI: *XXXXXXXX*
+- *Sebastiano Corradi* — DNI: *45103869*
+- *Juan Martin Quiroz Solla* — DNI: *XXXXXXXX*
+- *Juan Martin Quiroz Solla* — DNI: *XXXXXXXX*
 
 ---
 
