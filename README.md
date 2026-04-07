@@ -28,7 +28,7 @@ Se eligieron tres tipos distintos de autómatas para cubrir la mayor diversidad 
 | Archivo | Tipo | Lenguaje reconocido | Estado |
 |---|---|---|---|
 | `afd_termina_en_01.py` | Autómata Finito Determinista (AFD) | Cadenas binarias que terminan en `01` | ✓ Completo |
-| `afnd_contiene_ab.py`  | Autómata Finito No Determinista (AFND) | Cadenas sobre `{a,b}` que contienen la subcadena `ab` | Pendiente |
+| `afnd_contiene_ab.py`  | Autómata Finito No Determinista (AFND) | Cadenas sobre `{a,b}` que contienen la subcadena `ab` | ✓ Completo |
 | `ap_anbn.py`           | Autómata con Pila (AP / PDA) | Lenguaje `L = { aⁿbⁿ | n ≥ 1 }` | Pendiente |
 
 ### 1. AFD — Cadenas terminadas en `01`
@@ -108,11 +108,13 @@ cd <nombre-del-repo>
 # Instalar dependencias
 pip install graphviz
 
-# Ejecutar el AFD (único autómata implementado por ahora)
+# Ejecutar el AFD
 python afd_termina_en_01.py
 
-# Los siguientes scripts se agregarán en próximas entregas:
-# python afnd_contiene_ab.py
+# Ejecutar el AFND
+python afnd_contiene_ab.py
+
+# El siguiente script se agregará en la próxima entrega:
 # python ap_anbn.py
 ```
 
