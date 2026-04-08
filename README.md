@@ -94,11 +94,19 @@ Este autómata **no puede ser reconocido por un autómata finito**, ya que requi
 
 ## ▶️ Cómo ejecutar
 
-Cada autómata es un script independiente. Al ejecutarlo realiza tres acciones:
+Cada autómata es un script independiente. Al ejecutarlo realiza las siguientes acciones:
 
 1. Imprime su **tabla de transición** por consola.
-2. Procesa una serie de **cadenas de prueba** mostrando cada transición aplicada.
-3. Genera un archivo `diagrama_*.png` con el **diagrama de transición**.
+2. Genera un archivo `diagrama_*.png` con el **diagrama de transición** base (útil para incluir en el documento del TP).
+3. Entra en **modo interactivo**: el script queda esperando que el usuario ingrese cadenas una por una.
+
+Para cada cadena ingresada el script:
+- Muestra el procesamiento **paso a paso** por consola (cada transición aplicada).
+- Genera un archivo PNG adicional `recorrido_*_<cadena>.png` con el **recorrido resaltado** sobre el diagrama: estados visitados en amarillo, estado final en verde (aceptada) o rojo (rechazada), y aristas usadas en azul oscuro.
+
+Se puede ingresar más de una cadena por línea separando con comas (ej: `ab,aab,ba`).
+
+Para terminar el modo interactivo, escribir **`salir`**.
 
 ```bash
 # Clonar el repositorio
@@ -127,10 +135,12 @@ Los tres scripts siguen la **misma estructura** para facilitar la comparación e
 1. **Docstring inicial** con la definición formal del autómata, ejemplos de cadenas aceptadas/rechazadas y explicación del lenguaje reconocido.
 2. **Diccionario `TRANSICIONES`** que representa la función de transición δ.
 3. **Constantes** del autómata: `ESTADO_INICIAL`, `ESTADOS_FINALES`, `ALFABETO`.
-4. **Función `procesar_cadena(cadena)`** que ejecuta el autómata sobre una entrada e imprime el rastro de ejecución paso a paso.
+4. **Función `procesar_cadena(cadena)`** que ejecuta el autómata sobre una entrada, imprime el rastro de ejecución paso a paso y devuelve una tupla `(aceptada, traza)`.
 5. **Función `imprimir_tabla_transicion()`** que muestra la tabla de transición formateada por consola.
-6. **Función `generar_diagrama()`** que dibuja el diagrama de transición usando `graphviz`.
-7. **Bloque `if __name__ == "__main__"`** con los casos de prueba.
+6. **Función `generar_diagrama()`** que dibuja el diagrama de transición base usando `graphviz`.
+7. **Función `graficar_recorrido(cadena, traza)`** que genera un diagrama adicional con el recorrido de la cadena resaltado visualmente (estados y aristas coloreados).
+8. **Función `modo_interactivo()`** que implementa el loop de entrada de cadenas del usuario.
+9. **Bloque `if __name__ == "__main__"`** que coordina la ejecución: tabla → diagrama base → modo interactivo.
 
 ---
 

@@ -108,7 +108,7 @@ TRANSICIONES = {
 # Procesamiento de cadenas
 # ---------------------------------------------------------------------------
 
-def procesar_cadena(cadena: str) -> bool:
+def procesar_cadena(cadena: str) -> tuple:
     """
     Simula la ejecución del AP sobre `cadena` símbolo a símbolo, manejando
     explícitamente el estado de la pila en cada paso.
@@ -119,7 +119,12 @@ def procesar_cadena(cadena: str) -> bool:
     Al terminar la cadena aplica en bucle las transiciones ε disponibles,
     lo que permite llegar al estado final q2 sin consumir más entrada.
 
-    Retorna True si el estado final pertenece a F, False en caso contrario.
+    Retorna una tupla (aceptada, traza) donde traza es una lista de pasos
+    (estado_origen, símbolo_o_None, tope, estado_destino, pila_resultante).
+    El símbolo es None para las transiciones ε, igual que en las claves de
+    TRANSICIONES. Devolver la traza desde aquí evita tener que re-ejecutar
+    el autómata: el AP depende del estado mutable de la pila en cada instante,
+    que no puede reconstruirse externamente sin simular de nuevo.
 
     Parámetros
     ----------
@@ -128,8 +133,8 @@ def procesar_cadena(cadena: str) -> bool:
 
     Retorna
     -------
-    bool
-        True → aceptada, False → rechazada.
+    tuple
+        (True, traza) → aceptada, (False, traza) → rechazada.
     """
     print(f"\nProcesando cadena: '{cadena}'")
 
@@ -140,6 +145,10 @@ def procesar_cadena(cadena: str) -> bool:
     # forma más directa de implementar el comportamiento LIFO de una pila.
     estado = ESTADO_INICIAL
     pila: list[str] = [SIMBOLO_INICIAL_PILA]
+    # La traza registra cada paso como (origen, símbolo_o_None, tope, destino,
+    # pila_resultante). Guardamos una copia de la pila en cada paso para tener
+    # el historial completo aunque la pila sea un objeto mutable compartido.
+    traza: list = []
 
     print(f"  Estado inicial: {estado} | Pila: {pila}")
 
@@ -147,14 +156,14 @@ def procesar_cadena(cadena: str) -> bool:
         # Validación: rechazamos de inmediato si el símbolo no es del alfabeto.
         if simbolo not in ALFABETO:
             print(f"  ERROR: el símbolo '{simbolo}' no pertenece al alfabeto Σ = {ALFABETO}")
-            return False
+            return False, traza
 
         # Verificamos que la pila no esté vacía antes de intentar leer el tope.
         # En teoría esto no debería ocurrir en este AP (siempre queda al menos Z),
         # pero la guarda evita un IndexError y hace el código defensivo.
         if not pila:
             print(f"  Pila vacía — no hay transición posible para '{simbolo}'")
-            return False
+            return False, traza
 
         tope = pila[-1]
 
@@ -165,7 +174,7 @@ def procesar_cadena(cadena: str) -> bool:
         # haber comenzado a leer 'b').
         if (estado, simbolo, tope) not in TRANSICIONES:
             print(f"  No hay transición para δ({estado}, {simbolo}, {tope}) — RECHAZADA")
-            return False
+            return False, traza
 
         nuevo_estado, a_apilar = TRANSICIONES[(estado, simbolo, tope)]
 
@@ -183,6 +192,7 @@ def procesar_cadena(cadena: str) -> bool:
         apilado_str = "".join(a_apilar) if a_apilar else "ε"
         print(f"  δ({estado}, {simbolo}, {tope}) -> ({nuevo_estado}, {apilado_str}) | Pila: {pila}")
 
+        traza.append((estado, simbolo, tope, nuevo_estado, list(pila)))
         estado = nuevo_estado
 
     # --- Transiciones ε (épsilon) ---
@@ -209,6 +219,7 @@ def procesar_cadena(cadena: str) -> bool:
         apilado_str = "".join(a_apilar) if a_apilar else "ε"
         print(f"  δ({estado}, ε, {tope}) -> ({nuevo_estado}, {apilado_str}) | Pila: {pila}")
 
+        traza.append((estado, None, tope, nuevo_estado, list(pila)))
         estado = nuevo_estado
 
     # La cadena es aceptada si y solo si el estado en el que nos detuvimos
@@ -216,7 +227,7 @@ def procesar_cadena(cadena: str) -> bool:
     aceptada = estado in ESTADOS_FINALES
     veredicto = "ACEPTADA" if aceptada else "RECHAZADA"
     print(f"  Estado final: {estado} | Pila: {pila}  →  {veredicto}")
-    return aceptada
+    return aceptada, traza
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +393,152 @@ def generar_diagrama() -> None:
 
     # Renderizamos el diagrama.  cleanup=True elimina el archivo .gv intermedio
     # para no dejar archivos temporales en el directorio.
-    nombre_archivo = "diagrama_ap"
+    import os
+    carpeta = "AP"
+    os.makedirs(carpeta, exist_ok=True)
+    nombre_archivo = os.path.join(carpeta, "diagrama_ap")
     diagrama.render(nombre_archivo, cleanup=True)
     print(f"\nDiagrama guardado como '{nombre_archivo}.png'")
+
+
+# ---------------------------------------------------------------------------
+# Diagrama del recorrido con Graphviz
+# ---------------------------------------------------------------------------
+
+def graficar_recorrido(cadena: str, traza: list) -> None:
+    """
+    Genera un PNG del diagrama de transición con el recorrido del AP sobre
+    `cadena` resaltado visualmente.
+
+    Usamos graphviz (igual que generar_diagrama) en lugar de matplotlib para
+    mantener consistencia visual en todo el proyecto: graphviz produce
+    diagramas de autómatas con mejor calidad y semántica que un gráfico
+    de propósito general.
+
+    El AP tiene transiciones que dependen del tope de la pila, por lo que la
+    misma arista (origen→destino) puede corresponder a distintas reglas. Para
+    el resaltado visual usamos los pares (origen, destino) de la traza, sin
+    distinción de símbolo o tope: el objetivo es mostrar el camino recorrido
+    en el diagrama de estados, complementando el detalle de pila ya impreso
+    por consola.
+
+    Parámetros
+    ----------
+    cadena : str
+        Cadena que se procesó (puede ser la cadena vacía).
+    traza : list
+        Lista de tuplas (estado_origen, símbolo_o_None, tope, estado_destino,
+        pila_resultante).
+    """
+    try:
+        from graphviz import Digraph
+    except ImportError:
+        print("\n[!] La librería 'graphviz' no está instalada.")
+        print("    Instalala con:  pip install graphviz")
+        return
+
+    # Determinamos el estado final alcanzado y si la cadena fue aceptada.
+    # Con traza vacía (cadena vacía) el autómata se quedó en el estado inicial.
+    if traza:
+        estado_final = traza[-1][3]
+    else:
+        estado_final = ESTADO_INICIAL
+    aceptada = estado_final in ESTADOS_FINALES
+
+    # Todos los estados que aparecen en algún paso de la traza.
+    estados_visitados: set = set()
+    for paso in traza:
+        estados_visitados.add(paso[0])
+        estados_visitados.add(paso[3])
+
+    # Pares (origen, destino) recorridos durante la ejecución.
+    aristas_usadas: set = {(paso[0], paso[3]) for paso in traza}
+
+    sufijo = cadena if cadena else "epsilon"
+    sufijo_seguro = "".join(c if c.isalnum() or c in "-_" else "_" for c in sufijo)
+
+    diagrama = Digraph(name=f"recorrido_AP_{sufijo_seguro}", format="png")
+    diagrama.attr(rankdir="LR", fontname="Helvetica")
+
+    diagrama.node("__inicio__", shape="none", width="0", label="")
+
+    # --- Nodos coloreados según su rol en el recorrido ---
+    for estado in sorted(ESTADOS):
+        shape = "doublecircle" if estado in ESTADOS_FINALES else "circle"
+        if estado == estado_final:
+            # El último estado: verde (aceptado) o rojo (rechazado).
+            color_final = "#B8E6B8" if aceptada else "#F4B8B8"
+            diagrama.node(estado, shape=shape, style="filled", fillcolor=color_final)
+        elif estado in estados_visitados:
+            # Estados visitados en pasos intermedios: amarillo claro.
+            diagrama.node(estado, shape=shape, style="filled", fillcolor="#FFF4B8")
+        else:
+            diagrama.node(estado, shape=shape)
+
+    diagrama.edge("__inicio__", ESTADO_INICIAL)
+
+    # --- Aristas agrupadas con color según si fueron usadas ---
+    aristas: dict = {}
+    for (origen, ent, tope), (destino, a_apilar) in TRANSICIONES.items():
+        entrada_str = "ε" if ent is None else ent
+        apilar_str  = "ε" if not a_apilar else "".join(a_apilar)
+        etiqueta    = f"{entrada_str}, {tope} / {apilar_str}"
+        aristas.setdefault((origen, destino), []).append(etiqueta)
+
+    for (origen, destino), etiquetas in aristas.items():
+        etiqueta_final = "\n".join(sorted(etiquetas))
+        if (origen, destino) in aristas_usadas:
+            diagrama.edge(origen, destino, label=etiqueta_final,
+                          color="#1F4E79", penwidth="2.5", fontcolor="#1F4E79")
+        else:
+            diagrama.edge(origen, destino, label=etiqueta_final,
+                          color="#CCCCCC", fontcolor="#CCCCCC")
+
+    import os
+    carpeta = "AP"
+    os.makedirs(carpeta, exist_ok=True)
+    nombre_archivo = os.path.join(carpeta, f"recorrido_ap_{sufijo_seguro}")
+    diagrama.render(nombre_archivo, cleanup=True)
+    print(f"  Recorrido guardado como '{nombre_archivo}.png'")
+
+
+# ---------------------------------------------------------------------------
+# Modo interactivo
+# ---------------------------------------------------------------------------
+
+def modo_interactivo() -> None:
+    """
+    Inicia un loop interactivo donde el usuario ingresa cadenas y el autómata
+    las procesa mostrando el resultado paso a paso y generando el diagrama
+    del recorrido.
+    """
+    alfabeto_str = "{" + ", ".join(sorted(ALFABETO)) + "}"
+    print("\n" + "=" * 60)
+    print("  MODO INTERACTIVO — AP")
+    print(f"  Alfabeto válido: {alfabeto_str}")
+    print("  Ingresá cadenas para que el autómata las procese.")
+    print("  Escribí 'salir' para terminar.")
+    print("=" * 60)
+
+    try:
+        while True:
+            entrada = input("\n  > Ingresá una cadena (o 'salir'): ")
+            if entrada.strip().lower() == "salir":
+                print("\n  ¡Hasta luego!")
+                break
+            # Si el usuario separa varias cadenas con comas, las procesamos
+            # todas en orden, igual que si las hubiera ingresado de a una.
+            cadenas = [c.strip() for c in entrada.split(",")]
+            for cadena in cadenas:
+                # Validamos antes de procesar: si la cadena contiene símbolos
+                # fuera del alfabeto la ignoramos sin imprimir nada.
+                if cadena != "" and not all(c in ALFABETO for c in cadena):
+                    continue
+                aceptada, traza = procesar_cadena(cadena)
+                graficar_recorrido(cadena, traza)
+            print()
+    except (KeyboardInterrupt, EOFError):
+        print("\n\n  Interrupción recibida. ¡Hasta luego!")
 
 
 # ---------------------------------------------------------------------------
@@ -392,32 +546,20 @@ def generar_diagrama() -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # 1. Mostrar la tabla de transición para verificar visualmente el autómata
-    #    antes de procesar cadenas.
+    print("=" * 60)
+    print("  AP — Lenguaje L = { aⁿbⁿ | n ≥ 1 }")
+    print("=" * 60)
+
+    # 1. Mostrar la tabla de transición.
     imprimir_tabla_transicion()
 
-    # 2. Cadenas de prueba que cubren distintos casos:
-    #    - Casos que deben ser aceptados  : "ab", "aabb", "aaabbb", "aaaabbbb"
-    #    - Casos que deben ser rechazados : "", "a", "b", "abab", "aab", "abb", "ba"
-    cadenas_prueba = ["ab", "aabb", "aaabbb", "aaaabbbb", "", "a", "b", "abab", "aab", "abb", "ba"]
+    # 2. Generar el diagrama base del autómata (sin recorrido).
+    #    Envuelto en try/except para que un Ctrl+C durante el render de
+    #    Graphviz no aborte el script antes de llegar al modo interactivo.
+    try:
+        generar_diagrama()
+    except KeyboardInterrupt:
+        print("\n  Generación del diagrama base interrumpida; continuando...")
 
-    print("\n" + "=" * 55)
-    print("PROCESAMIENTO DE CADENAS DE PRUEBA")
-    print("=" * 55)
-
-    resultados = {}
-    for cadena in cadenas_prueba:
-        resultados[cadena] = procesar_cadena(cadena)
-
-    # Resumen final: útil para contrastar de un vistazo con la tabla teórica.
-    print("\n" + "=" * 55)
-    print("RESUMEN")
-    print("=" * 55)
-    print(f"{'Cadena':<14} {'Resultado'}")
-    print("-" * 27)
-    for cadena, aceptada in resultados.items():
-        etiqueta = "ACEPTADA" if aceptada else "RECHAZADA"
-        print(f"'{cadena}'  {' ' * (12 - len(cadena))}{etiqueta}")
-
-    # 3. Generar el diagrama PNG del autómata.
-    generar_diagrama()
+    # 3. Entrar al modo interactivo para procesar cadenas ingresadas por el usuario.
+    modo_interactivo()
