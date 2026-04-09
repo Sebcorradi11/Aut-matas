@@ -35,6 +35,22 @@ Institución: Universidad de la Cuenca del Plata
 """
 
 # ---------------------------------------------------------------------------
+# Importaciones
+# ---------------------------------------------------------------------------
+
+# Pillow se usa en graficar_recorrido para combinar verticalmente la imagen del
+# diagrama (generada con graphviz) con la tabla de descripciones instantáneas
+# (también generada con graphviz como nodo HTML).  Usamos Pillow porque graphviz
+# no posiciona bien una tabla como "pie" de un diagrama horizontal; combinar dos
+# PNGs con Pillow permite controlar el layout con precisión.
+try:
+    from PIL import Image
+    _PIL_DISPONIBLE = True
+except ImportError:
+    _PIL_DISPONIBLE = False
+
+
+# ---------------------------------------------------------------------------
 # Definición del autómata
 # ---------------------------------------------------------------------------
 
@@ -101,33 +117,42 @@ def procesar_cadena(cadena: str) -> tuple:
     if cadena == "":
         print("  (cadena vacía — no se aplica ninguna transición)")
         print(f"  Estado final: {ESTADO_INICIAL}  →  RECHAZADA")
-        return False, []
+        # ID única: el autómata parte y permanece en el estado inicial con entrada vacía.
+        return False, [], [(ESTADO_INICIAL, "")]
 
     estado_actual = ESTADO_INICIAL
     # La traza registra cada paso como (origen, símbolo, destino) para que
     # graficar_recorrido pueda resaltar exactamente las aristas recorridas.
     traza: list = []
+    # Las IDs (descripciones instantáneas) registran la "foto" del autómata en cada
+    # instante.  Para el AFD la ID es (estado, entrada_restante), ya que la única
+    # memoria del modelo es el estado actual.  El formato difiere entre autómatas:
+    # el AFND usa (conjunto_estados, entrada) y el AP usa (estado, entrada, pila).
+    ids: list = [(ESTADO_INICIAL, cadena)]
 
-    for simbolo in cadena:
+    for i, simbolo in enumerate(cadena):
         # Validación: rechazamos de inmediato si el símbolo no es del alfabeto,
         # porque consultar TRANSICIONES con una clave inexistente lanzaría KeyError
         # y daría un error confuso al usuario.
         if simbolo not in ALFABETO:
             print(f"  ERROR: el símbolo '{simbolo}' no pertenece al alfabeto Σ = {ALFABETO}")
-            return False, traza
+            return False, traza, ids
 
         estado_siguiente = TRANSICIONES[(estado_actual, simbolo)]
         # Notación formal de transición: δ(estado, símbolo) = nuevo_estado
         print(f"  δ({estado_actual}, {simbolo}) = {estado_siguiente}")
         traza.append((estado_actual, simbolo, estado_siguiente))
         estado_actual = estado_siguiente
+        # Guardamos la ID post-transición: nuevo estado + lo que queda por leer.
+        # cadena[i+1:] es "" cuando i es el último índice, que es correcto.
+        ids.append((estado_actual, cadena[i + 1:]))
 
     # La cadena es aceptada si y solo si el estado en el que detuvimos la
     # lectura pertenece al conjunto de estados finales F.
     aceptada = estado_actual in ESTADOS_FINALES
     veredicto = "ACEPTADA" if aceptada else "RECHAZADA"
     print(f"  Estado final: {estado_actual}  →  {veredicto}")
-    return aceptada, traza
+    return aceptada, traza, ids
 
 
 # ---------------------------------------------------------------------------
@@ -284,30 +309,32 @@ def generar_diagrama() -> None:
 # Diagrama del recorrido con Graphviz
 # ---------------------------------------------------------------------------
 
-def graficar_recorrido(cadena: str, traza: list) -> None:
+def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     """
-    Genera un PNG del diagrama de transición con el recorrido de `cadena`
-    resaltado visualmente sobre el autómata.
+    Genera un PNG compuesto: arriba el diagrama con el recorrido resaltado y
+    abajo una tabla con las descripciones instantáneas (IDs) del autómata.
 
-    Usamos graphviz (igual que generar_diagrama) en lugar de matplotlib para
-    mantener consistencia visual en todo el proyecto: graphviz produce
-    diagramas de autómatas con mejor calidad y semántica que un gráfico
-    de propósito general.
+    Una descripción instantánea del AFD es un par (estado, entrada_restante).
+    La única memoria del modelo es el estado actual; no hay pila ni subconjunto
+    de estados activos.  Esto contrasta con el AFND —que necesita un conjunto de
+    estados— y el AP —que necesita estado más pila—, reflejando las diferencias
+    en el poder de memoria de cada modelo (Hopcroft et al., 2007; Sipser, 2013).
 
-    Los estados visitados se pintan amarillo (#FFF4B8) para destacarlos del
-    resto sin que el color sea tan intenso que tape las etiquetas; el último
-    estado se pinta verde (#B8E6B8) si fue aceptado o rojo (#F4B8B8) si fue
-    rechazado, dando retroalimentación visual inmediata del veredicto.
-    Las aristas usadas se resaltan en azul oscuro y las no usadas se atenúan
-    en gris para que el recorrido salte a la vista.
+    Usamos Pillow para combinar ambas imágenes verticalmente porque graphviz no
+    posiciona bien una tabla como "pie" de un diagrama horizontal.  Combinar PNGs
+    con Pillow permite controlar el layout con precisión sin depender del motor DOT.
+
+    La tabla solo aparece en los PNGs individuales y no en el diagrama combinado
+    de varias cadenas, para no saturar esa imagen cuando hay muchas entradas.
 
     Parámetros
     ----------
     cadena : str
         Cadena que se procesó (puede ser la cadena vacía).
     traza : list
-        Lista de tuplas (estado_origen, símbolo, estado_destino) devuelta
-        por procesar_cadena.
+        Lista de tuplas (estado_origen, símbolo, estado_destino).
+    ids : list
+        Descripciones instantáneas: lista de tuplas (estado, entrada_restante).
     """
     try:
         from graphviz import Digraph
@@ -317,51 +344,38 @@ def graficar_recorrido(cadena: str, traza: list) -> None:
         return
 
     # Determinamos el estado final alcanzado y si la cadena fue aceptada.
-    # Con traza vacía (cadena vacía o error inmediato) el autómata se quedó
-    # en el estado inicial.
     if traza:
         estado_final = traza[-1][2]
     else:
         estado_final = ESTADO_INICIAL
     aceptada = estado_final in ESTADOS_FINALES
 
-    # Todos los estados que aparecen en algún paso de la traza.
     estados_visitados: set = set()
     for origen, _, destino in traza:
         estados_visitados.add(origen)
         estados_visitados.add(destino)
 
-    # Pares (origen, destino) cuya arista fue efectivamente recorrida.
     aristas_usadas: set = {(origen, destino) for origen, _, destino in traza}
 
-    # Sanitizamos la cadena para usarla como parte del nombre de archivo.
-    # La cadena vacía se representa como "epsilon" para evitar nombres sin sufijo.
     sufijo = cadena if cadena else "epsilon"
     sufijo_seguro = "".join(c if c.isalnum() or c in "-_" else "_" for c in sufijo)
 
     diagrama = Digraph(name=f"recorrido_AFD_{sufijo_seguro}", format="png")
     diagrama.attr(rankdir="LR", fontname="Helvetica")
-
-    # --- Nodo invisible de inicio ---
     diagrama.node("__inicio__", shape="none", width="0", label="")
 
-    # --- Nodos coloreados según su rol en el recorrido ---
     for estado in sorted(ESTADOS):
         shape = "doublecircle" if estado in ESTADOS_FINALES else "circle"
         if estado == estado_final:
-            # El último estado recibe verde (aceptado) o rojo (rechazado).
             color_final = "#B8E6B8" if aceptada else "#F4B8B8"
             diagrama.node(estado, shape=shape, style="filled", fillcolor=color_final)
         elif estado in estados_visitados:
-            # Los estados intermedios visitados se pintan amarillo claro.
             diagrama.node(estado, shape=shape, style="filled", fillcolor="#FFF4B8")
         else:
             diagrama.node(estado, shape=shape)
 
-    # --- Flecha de inicio ---
     diagrama.edge("__inicio__", ESTADO_INICIAL)
 
-    # --- Aristas agrupadas con color según si fueron usadas en el recorrido ---
     aristas: dict = {}
     for (origen, simbolo), destino in TRANSICIONES.items():
         aristas.setdefault((origen, destino), []).append(simbolo)
@@ -376,10 +390,96 @@ def graficar_recorrido(cadena: str, traza: list) -> None:
                           color="#CCCCCC", fontcolor="#CCCCCC")
 
     import os
+    import tempfile
+
     carpeta = "AFD"
     os.makedirs(carpeta, exist_ok=True)
     nombre_archivo = os.path.join(carpeta, f"recorrido_afd_{sufijo_seguro}")
-    diagrama.render(nombre_archivo, cleanup=True)
+
+    if _PIL_DISPONIBLE:
+        # --- Combinamos diagrama + tabla de IDs con Pillow ---
+        tmp_dir   = tempfile.gettempdir()
+        tmp_diag  = os.path.join(tmp_dir, "_diag_afd_tmp")
+        tmp_tabla = os.path.join(tmp_dir, "_tabla_afd_tmp")
+
+        # Paso 1: renderizamos el diagrama en un archivo temporal.
+        diagrama.render(tmp_diag, cleanup=True)
+
+        # Paso 2: construimos la tabla HTML de IDs y la renderizamos.
+        # Columnas: Paso | Estado | Entrada restante | Acción
+        encabezado_html = (
+            '<TR>'
+            '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Paso</FONT></B></TD>'
+            '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Estado</FONT></B></TD>'
+            '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Entrada restante</FONT></B></TD>'
+            '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Acci&#243;n</FONT></B></TD>'
+            '</TR>'
+        )
+        filas_html = []
+        for i, (estado_id, entrada_id) in enumerate(ids):
+            es_ultima = (i == len(ids) - 1)
+            if es_ultima:
+                bg = "#B8E6B8" if aceptada else "#F4B8B8"
+            else:
+                bg = "#FFFFFF" if i % 2 == 0 else "#F5F5F5"
+
+            if i == 0:
+                accion = "inicio"
+            else:
+                est_ant = ids[i - 1][0]
+                sim     = traza[i - 1][1]
+                accion  = f"&#948;({est_ant}, {sim})"
+            if es_ultima:
+                accion += " [ACEPTA]" if aceptada else " [RECHAZA]"
+
+            # La entrada restante vacía se muestra como ε en la tabla.
+            entrada_display = entrada_id if entrada_id else "&#949;"
+
+            filas_html.append(
+                f'<TR>'
+                f'<TD BGCOLOR="{bg}"><FONT FACE="Arial">{i}</FONT></TD>'
+                f'<TD BGCOLOR="{bg}"><FONT FACE="Arial">{estado_id}</FONT></TD>'
+                f'<TD BGCOLOR="{bg}"><FONT FACE="Arial">{entrada_display}</FONT></TD>'
+                f'<TD BGCOLOR="{bg}"><FONT FACE="Arial">{accion}</FONT></TD>'
+                f'</TR>'
+            )
+
+        label_tabla = (
+            '<<TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">'
+            + encabezado_html
+            + "".join(filas_html)
+            + '</TABLE>>'
+        )
+
+        tabla_dot = Digraph(format="png")
+        tabla_dot.attr(bgcolor="white")
+        tabla_dot.node("t", label=label_tabla, shape="plaintext")
+        tabla_dot.render(tmp_tabla, cleanup=True)
+
+        # Paso 3: combinamos verticalmente las dos imágenes con Pillow.
+        img_diag  = Image.open(tmp_diag  + ".png").convert("RGB")
+        img_tabla = Image.open(tmp_tabla + ".png").convert("RGB")
+
+        padding    = 20
+        max_ancho  = max(img_diag.width, img_tabla.width)
+        alto_total = img_diag.height + padding + img_tabla.height
+
+        combinada = Image.new("RGB", (max_ancho, alto_total), (255, 255, 255))
+        combinada.paste(img_diag,  ((max_ancho - img_diag.width)  // 2, 0))
+        combinada.paste(img_tabla, ((max_ancho - img_tabla.width) // 2,
+                                    img_diag.height + padding))
+        combinada.save(nombre_archivo + ".png")
+
+        # Paso 4: eliminamos los temporales para no ensuciar el directorio.
+        img_diag.close()
+        img_tabla.close()
+        os.remove(tmp_diag  + ".png")
+        os.remove(tmp_tabla + ".png")
+    else:
+        # Sin Pillow generamos solo el diagrama (sin la tabla de IDs).
+        diagrama.render(nombre_archivo, cleanup=True)
+        print("  [!] Instalá Pillow para incluir la tabla de IDs: pip install Pillow")
+
     print(f"  Recorrido guardado como '{nombre_archivo}.png'")
 
 
@@ -415,8 +515,14 @@ def modo_interactivo() -> None:
                 # fuera del alfabeto la ignoramos sin imprimir nada.
                 if cadena != "" and not all(c in ALFABETO for c in cadena):
                     continue
-                aceptada, traza = procesar_cadena(cadena)
-                graficar_recorrido(cadena, traza)
+                aceptada, traza, ids = procesar_cadena(cadena)
+                try:
+                    graficar_recorrido(cadena, traza, ids)
+                except Exception as e:
+                    if "ExecutableNotFound" in type(e).__name__ or "dot" in str(e).lower():
+                        print("  (Diagrama omitido: Graphviz no disponible)")
+                    else:
+                        raise
             print()
     except (KeyboardInterrupt, EOFError):
         print("\n\n  Interrupción recibida. ¡Hasta luego!")
@@ -435,12 +541,19 @@ if __name__ == "__main__":
     imprimir_tabla_transicion()
 
     # 2. Generar el diagrama base del autómata (sin recorrido).
-    #    Envuelto en try/except para que un Ctrl+C durante el render de
-    #    Graphviz no aborte el script antes de llegar al modo interactivo.
+    #    Envuelto en try/except para que un Ctrl+C o la ausencia del ejecutable
+    #    'dot' de Graphviz no aborte el script antes de llegar al modo interactivo.
     try:
         generar_diagrama()
     except KeyboardInterrupt:
         print("\n  Generación del diagrama base interrumpida; continuando...")
+    except Exception as e:
+        if "ExecutableNotFound" in type(e).__name__ or "dot" in str(e).lower():
+            print("\n  Graphviz no está instalado o 'dot' no está en el PATH.")
+            print("  Descárgalo desde https://graphviz.org/download/ e instálalo.")
+            print("  Los diagramas PNG se omitirán; el resto del programa funciona con normalidad.")
+        else:
+            raise
 
     # 3. Entrar al modo interactivo para procesar cadenas ingresadas por el usuario.
     modo_interactivo()

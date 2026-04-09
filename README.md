@@ -85,6 +85,10 @@ Este autómata **no puede ser reconocido por un autómata finito**, ya que requi
   ```bash
   pip install graphviz
   ```
+- Librería **Pillow (PIL)** para la composición de imágenes (diagrama + tabla de IDs):
+  ```bash
+  pip install Pillow
+  ```
 - Binario de **Graphviz** instalado en el sistema (necesario para renderizar los diagramas a PNG):
   - **Windows:** descargar desde [graphviz.org/download](https://graphviz.org/download/) y agregarlo al PATH
   - **Linux (Debian/Ubuntu):** `sudo apt install graphviz`
@@ -103,10 +107,25 @@ Cada autómata es un script independiente. Al ejecutarlo realiza las siguientes 
 Para cada cadena ingresada el script:
 - Muestra el procesamiento **paso a paso** por consola (cada transición aplicada).
 - Genera un archivo PNG adicional `recorrido_*_<cadena>.png` con el **recorrido resaltado** sobre el diagrama: estados visitados en amarillo, estado final en verde (aceptada) o rojo (rechazada), y aristas usadas en azul oscuro.
+- El PNG individual incluye además una **tabla de descripciones instantáneas (IDs)** debajo del diagrama, mostrando la configuración completa del autómata en cada paso de la ejecución (ver sección siguiente).
 
 Se puede ingresar más de una cadena por línea separando con comas (ej: `ab,aab,ba`).
 
 Para terminar el modo interactivo, escribir **`salir`**.
+
+### Descripciones instantáneas (IDs)
+
+Una **descripción instantánea** es la "foto completa" del estado del autómata en un instante dado, con toda la información necesaria para continuar la ejecución. Su formato varía según el modelo, reflejando las diferencias en el tipo de memoria de cada autómata:
+
+| Autómata | Formato de la ID | Memoria del modelo |
+|---|---|---|
+| AFD | `(estado, entrada_restante)` | Solo el estado actual |
+| AFND | `(conjunto_de_estados_activos, entrada_restante)` | Conjunto de estados activos en paralelo |
+| AP | `(estado, entrada_restante, pila)` | Estado actual + contenido de la pila |
+
+La tabla que aparece en cada PNG individual muestra la secuencia completa de IDs durante la ejecución, lo que permite distinguir cadenas que usan las mismas aristas del diagrama pero tienen comportamientos distintos (por ejemplo, en el AP las cadenas `ab`, `aabb` y `aaabbb` recorren el mismo camino de estados pero su evolución de pila es completamente diferente).
+
+Esta notación es estándar en la bibliografía de la cátedra: Hopcroft.
 
 ```bash
 # Clonar el repositorio
@@ -160,6 +179,7 @@ Los tres scripts siguen la **misma estructura** para facilitar la comparación e
 
 - **Python 3** — lenguaje de implementación
 - **graphviz** — librería para generar los diagramas de transición
+- **Pillow (PIL)** — librería para combinar el diagrama con la tabla de IDs en un único PNG
 - **Git / GitHub** — control de versiones
 
 ---
