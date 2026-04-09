@@ -196,8 +196,8 @@ Los tres scripts siguen la **misma estructura** para facilitar la comparación e
 ## 👥 Autores
 
 - *Sebastiano Corradi* — DNI: *45103869*
-- *Juan Martin Quiroz Solla* — DNI: *XXXXXXXX*
-- *Juan Martin Quiroz Solla* — DNI: *XXXXXXXX*
+- *Juan Martin Quiroz Solla* — DNI: *44196472*
+- *Ignacio Rosales* — DNI: *44743642*
 
 ---
 
