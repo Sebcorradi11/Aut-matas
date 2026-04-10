@@ -53,13 +53,11 @@ Trabajo  : TP1 — Autómata 3 de 3 (AP)
 Institución: Universidad de la Cuenca del Plata
 """
 
-# ---------------------------------------------------------------------------
-# Importaciones
-# ---------------------------------------------------------------------------
+# =====================================================
+# IMPORTACIONES
+# =====================================================
 
-# Pillow se usa en graficar_recorrido para combinar verticalmente la imagen del
-# diagrama con la tabla de descripciones instantáneas.  Usamos Pillow porque
-# graphviz no posiciona bien una tabla como "pie" de un diagrama horizontal.
+# Pillow combina el diagrama con la tabla de IDs en graficar_recorrido.
 try:
     from PIL import Image
     _PIL_DISPONIBLE = True
@@ -67,48 +65,19 @@ except ImportError:
     _PIL_DISPONIBLE = False
 
 
-# ---------------------------------------------------------------------------
-# Definición del autómata
-# ---------------------------------------------------------------------------
+# =====================================================
+# DEFINICIÓN DEL AUTÓMATA
+# =====================================================
 
-# Conjunto de estados como conjunto de Python; usamos strings para que sean
-# legibles al imprimir transiciones y en el diagrama.
 ESTADOS = {"q0", "q1", "q2"}
-
-# Alfabeto de entrada explícito: lo necesitamos para validar cada símbolo antes
-# de consultar la tabla de transición y para recorrer columnas en la tabla.
 ALFABETO = {"a", "b"}
-
-# Estado inicial
 ESTADO_INICIAL = "q0"
-
-# Conjunto de estados finales (de aceptación).  Es un conjunto para que la
-# verificación de pertenencia sea O(1) aunque haya muchos estados finales.
 ESTADOS_FINALES = {"q2"}
-
-# Alfabeto de la pila: los símbolos que pueden aparecer en la pila.
-# Z es el símbolo de fondo (siempre está al inicio y marca que la pila está vacía
-# de marcas de conteo). A es la marca que apilamos por cada 'a' leída.
 ALFABETO_PILA = {"A", "Z"}
-
-# Símbolo inicial de la pila: la pila arranca con solo este símbolo.
 SIMBOLO_INICIAL_PILA = "Z"
 
-# Función de transición representada como diccionario
-#   (estado, símbolo_entrada, tope_pila) → (nuevo_estado, lista_a_apilar)
-#
-# Diferencias clave respecto al AFD y el AFND:
-#   1. La clave tiene TRES componentes: estado, símbolo de entrada y tope de pila.
-#      Esto refleja que la decisión del AP depende no solo de lo que lee sino
-#      también de lo que hay en el tope de la pila.
-#   2. El valor incluye una LISTA de símbolos a apilar.  Una lista vacía []
-#      significa "desapilar el tope sin poner nada en su lugar" (el tope
-#      simplemente desaparece).  El primer elemento de la lista quedará en el
-#      tope después de la transición.
-#   3. None como símbolo de entrada representa la transición ε (épsilon):
-#      se aplica sin consumir ningún símbolo de la cadena.  Es necesaria para
-#      poder pasar al estado final q2 una vez que la cadena ya fue leída
-#      completamente (ver procesar_cadena).
+# (estado, símbolo_entrada, tope_pila) → (nuevo_estado, lista_a_apilar)
+# lista vacía [] = desapilar sin reemplazar; None = transición ε (sin consumir entrada)
 TRANSICIONES = {
     ("q0", "a", "Z"): ("q0", ["A", "Z"]),   # primera 'a': apila A, deja Z debajo
     ("q0", "a", "A"): ("q0", ["A", "A"]),   # 'a' siguientes: apila otra A
@@ -118,63 +87,36 @@ TRANSICIONES = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Procesamiento de cadenas
-# ---------------------------------------------------------------------------
+# =====================================================
+# PROCESAMIENTO DE CADENAS
+# =====================================================
 
+# Ejecuta el AP sobre una cadena, maneja la pila y aplica transiciones ε al final.
 def procesar_cadena(cadena: str) -> tuple:
     """
-    Simula la ejecución del AP sobre `cadena` símbolo a símbolo, manejando
-    explícitamente el estado de la pila en cada paso.
+    Simula el AP símbolo a símbolo, manejando explícitamente la pila en cada paso.
+    Al terminar la cadena aplica transiciones ε disponibles para alcanzar q2.
 
-    Por cada símbolo imprime el paso aplicado con el formato:
-        δ(estado, símbolo, tope) -> (nuevo_estado, apilado) | Pila: [...]
+    Args:
+        cadena (str): Cadena sobre {a, b} a procesar. Puede ser vacía.
 
-    Al terminar la cadena aplica en bucle las transiciones ε disponibles,
-    lo que permite llegar al estado final q2 sin consumir más entrada.
-
-    Retorna una tupla (aceptada, traza) donde traza es una lista de pasos
-    (estado_origen, símbolo_o_None, tope, estado_destino, pila_resultante).
-    El símbolo es None para las transiciones ε, igual que en las claves de
-    TRANSICIONES. Devolver la traza desde aquí evita tener que re-ejecutar
-    el autómata: el AP depende del estado mutable de la pila en cada instante,
-    que no puede reconstruirse externamente sin simular de nuevo.
-
-    Parámetros
-    ----------
-    cadena : str
-        Cadena sobre {a, b} a procesar.  Puede ser la cadena vacía.
-
-    Retorna
-    -------
-    tuple
-        (True, traza) → aceptada, (False, traza) → rechazada.
+    Returns:
+        tuple: (aceptada, traza, ids) donde traza es lista de (origen,
+               símbolo_o_None, tope, destino, pila) e ids es lista de
+               (estado, entrada_restante, pila).
     """
     print(f"\nProcesando cadena: '{cadena}'")
 
-    # Inicializamos el estado y la pila.
-    # Representamos la pila como una lista de Python donde el ÚLTIMO elemento
-    # (pila[-1]) es el TOPE.  Esta convención nos permite usar append() y pop()
-    # sin argumentos, que operan sobre el final de la lista en O(1) y son la
-    # forma más directa de implementar el comportamiento LIFO de una pila.
+    # pila[-1] es el tope; append/pop operan en O(1) sobre el final de la lista
     estado = ESTADO_INICIAL
     pila: list[str] = [SIMBOLO_INICIAL_PILA]
-    # La traza registra cada paso como (origen, símbolo_o_None, tope, destino,
-    # pila_resultante). Guardamos una copia de la pila en cada paso para tener
-    # el historial completo aunque la pila sea un objeto mutable compartido.
     traza: list = []
-    # Las IDs del AP son (estado, entrada_restante, copia_de_pila).
-    # El AP tiene dos dimensiones de memoria: el estado actual y la pila.  Ambas
-    # son necesarias para describir completamente la configuración del autómata en
-    # cada instante.  Guardamos list(pila) y no la referencia directa para evitar
-    # que mutaciones posteriores de la pila alteren las IDs ya registradas — ese
-    # es el bug clásico al capturar historial de estructuras mutables.
+    # Guardamos list(pila) y no la referencia para que el historial no mute
     ids: list = [(ESTADO_INICIAL, cadena, list(pila))]
 
     print(f"  Estado inicial: {estado} | Pila: {pila}")
 
     for i, simbolo in enumerate(cadena):
-        # Validación: rechazamos de inmediato si el símbolo no es del alfabeto.
         if simbolo not in ALFABETO:
             print(f"  ERROR: el símbolo '{simbolo}' no pertenece al alfabeto Σ = {ALFABETO}")
             return False, traza, ids
@@ -191,8 +133,8 @@ def procesar_cadena(cadena: str) -> tuple:
 
         nuevo_estado, a_apilar = TRANSICIONES[(estado, simbolo, tope)]
 
-        pila.pop()
-        for sym in reversed(a_apilar):
+        pila.pop()  # desapila el tope antes de poner los nuevos símbolos
+        for sym in reversed(a_apilar):  # reversed: el primer elem de a_apilar queda en el tope
             pila.append(sym)
 
         apilado_str = "".join(a_apilar) if a_apilar else "ε"
@@ -200,8 +142,6 @@ def procesar_cadena(cadena: str) -> tuple:
 
         traza.append((estado, simbolo, tope, nuevo_estado, list(pila)))
         estado = nuevo_estado
-        # Guardamos list(pila) —no la referencia— para que esta ID no cambie
-        # si la pila se modifica en pasos posteriores.
         ids.append((estado, cadena[i + 1:], list(pila)))
 
     # --- Transiciones ε (épsilon) ---
@@ -213,8 +153,8 @@ def procesar_cadena(cadena: str) -> tuple:
             break
 
         nuevo_estado, a_apilar = TRANSICIONES[(estado, None, tope)]
-        pila.pop()
-        for sym in reversed(a_apilar):
+        pila.pop()  # desapila el tope antes de poner los nuevos símbolos
+        for sym in reversed(a_apilar):  # reversed: el primer elem de a_apilar queda en el tope
             pila.append(sym)
 
         apilado_str = "".join(a_apilar) if a_apilar else "ε"
@@ -222,7 +162,6 @@ def procesar_cadena(cadena: str) -> tuple:
 
         traza.append((estado, None, tope, nuevo_estado, list(pila)))
         estado = nuevo_estado
-        # Entrada restante es "" porque ya consumimos toda la cadena.
         ids.append((estado, "", list(pila)))
 
     aceptada = estado in ESTADOS_FINALES
@@ -231,40 +170,33 @@ def procesar_cadena(cadena: str) -> tuple:
     return aceptada, traza, ids
 
 
-# ---------------------------------------------------------------------------
-# Tabla de transición
-# ---------------------------------------------------------------------------
+# =====================================================
+# TABLA DE TRANSICIÓN (consola)
+# =====================================================
 
+# Imprime la tabla δ del AP (una fila por regla) con bordes Unicode.
 def imprimir_tabla_transicion() -> None:
     """
-    Imprime la tabla de transición δ en la consola usando caracteres de cuadro
-    Unicode para que sea legible y presentable en el informe.
+    Imprime la tabla de transición δ con bordes Unicode.
 
-    A diferencia del AFD y el AFND (cuyas tablas son grillas estado × símbolo),
-    la tabla del AP tiene una FILA POR REGLA, ya que la función de transición
+    A diferencia del AFD/AFND, la tabla tiene una fila por regla porque δ
     depende de tres argumentos: estado, símbolo de entrada y tope de pila.
-    Las columnas son: Estado | Entrada | Tope | Nuevo estado | A apilar.
+    Convenciones: → estado inicial, * estado final, ε transición/apilado vacío.
 
-    Convenciones de la tabla:
-        →  marca el estado inicial (q0).
-        *  marca los estados finales (q2).
-        ε  indica transición sin consumir entrada (símbolo None) o lista vacía.
+    Returns:
+        None
     """
-    # Ordenamos los estados para que los prefijos y el recorrido sean consistentes.
     estados_ord = sorted(ESTADOS)
 
-    # Anchos de cada columna, elegidos para que el contenido más ancho quepa
-    # con margen.  "Nuevo estado" es la columna más larga en el encabezado.
     ancho_estado   = max(len(e) + 3 for e in estados_ord)  # +3 para "→ " o "* "
-    ancho_entrada  = 9    # "Entrada" tiene 7 letras; 9 deja margen para "a", "b", "ε"
-    ancho_tope     = 7    # "Tope" tiene 4; 7 cabe "Z" y "A" con holgura
-    ancho_nuevo    = 14   # "Nuevo estado" tiene 12 letras
-    ancho_apilar   = 10   # "A apilar" tiene 8; 10 cabe "AZ", "AA", "Z", "ε"
+    ancho_entrada  = 9
+    ancho_tope     = 7
+    ancho_nuevo    = 14
+    ancho_apilar   = 10
 
     anchos = [ancho_estado, ancho_entrada, ancho_tope, ancho_nuevo, ancho_apilar]
 
     def linea(izq, sep, der):
-        # Construye una línea horizontal usando los anchos definidos.
         return izq + sep.join("─" * a for a in anchos) + der
 
     sep_top = linea("┌", "┬", "┐")
@@ -274,7 +206,6 @@ def imprimir_tabla_transicion() -> None:
     print("\nTabla de transición δ:")
     print(sep_top)
 
-    # Encabezado
     print(
         f"│{'δ':^{ancho_estado}}"
         f"│{'Entrada':^{ancho_entrada}}"
@@ -284,15 +215,12 @@ def imprimir_tabla_transicion() -> None:
     )
     print(sep_mid)
 
-    # Filas: una por cada regla de transición, en orden canónico
-    # (por estado origen, luego ε al final dentro de cada estado).
     def clave_orden(item):
         (est, ent, tope), _ = item
-        # None (ε) va después de los símbolos concretos dentro del mismo estado.
+        # None (ε) va después de los símbolos concretos dentro del mismo estado
         return (est, "" if ent is None else ent, tope)
 
     for (est, ent, tope), (nuevo_est, a_apilar) in sorted(TRANSICIONES.items(), key=clave_orden):
-        # Prefijo de estado: → para inicial, * para final.
         prefijo = ""
         if est == ESTADO_INICIAL:
             prefijo += "→ "
@@ -315,69 +243,45 @@ def imprimir_tabla_transicion() -> None:
     print("  → estado inicial     * estado(s) final(es)     ε transición/apilado vacío")
 
 
-# ---------------------------------------------------------------------------
-# Diagrama con Graphviz
-# ---------------------------------------------------------------------------
+# =====================================================
+# DIAGRAMA BASE (Graphviz)
+# =====================================================
 
+# Genera el diagrama del AP y lo guarda como AP/diagrama_ap.png.
 def generar_diagrama() -> None:
     """
-    Genera el diagrama de transición del AP y lo guarda como diagrama_ap.png.
+    Renderiza el diagrama de transición del AP con Graphviz (formato PNG).
 
-    Usamos la librería `graphviz` de Python (wrapper sobre el binario de Graphviz)
-    para describir el grafo en formato DOT y renderizarlo a PNG.
+    Etiqueta de arista: "entrada, tope / apilar" (ej. "a, Z / AZ").
+    Agrupa reglas con el mismo par (origen, destino) en una sola flecha.
 
-    Decisiones de diseño:
-        - rankdir="LR": el diagrama crece de izquierda a derecha, convención
-          estándar en libros de Teoría de la Computación.
-        - Nodo invisible "__inicio__": la flecha de inicio hacia q0 no tiene
-          estado fuente real; se modela con un nodo invisible de tamaño 0.
-        - doublecircle para estados finales, circle para los demás.
-        - Etiqueta de arista en formato "entrada, tope / apilar", por ejemplo
-          "a, Z / AZ" significa "leer 'a' con Z en el tope y apilar AZ".
-          Para ε se usa el símbolo ε directamente en la etiqueta.
-        - Agrupación de aristas: cuando dos reglas distintas van del mismo
-          estado origen al mismo estado destino, sus etiquetas se combinan
-          separadas por salto de línea (\n) en una sola flecha, para mantener
-          el diagrama limpio y legible.
+    Returns:
+        None
     """
     try:
         from graphviz import Digraph
     except ImportError:
-        # Avisamos con claridad para que el usuario sepa qué instalar,
-        # en lugar de dejar que Python lance un ImportError críptico.
         print("\n[!] La librería 'graphviz' no está instalada.")
         print("    Instalala con:  pip install graphviz")
         print("    También necesitás el binario de Graphviz del sistema:")
         print("    https://graphviz.org/download/")
         return
 
-    # Creamos un dígrafo (grafo dirigido) con el motor "dot", que respeta
-    # jerarquías y es el más adecuado para autómatas.
     diagrama = Digraph(name="AP_anbn", format="png")
     diagrama.attr(rankdir="LR", fontname="Helvetica")
 
-    # --- Nodos ---
-    # Nodo invisible que sirve como origen de la flecha de inicio.
+    # Nodo invisible como origen de la flecha de inicio
     diagrama.node("__inicio__", shape="none", width="0", label="")
 
     for estado in sorted(ESTADOS):
         if estado in ESTADOS_FINALES:
-            # Los estados finales se dibujan con doble círculo (notación estándar).
             diagrama.node(estado, shape="doublecircle")
         else:
             diagrama.node(estado, shape="circle")
 
-    # --- Flecha de inicio ---
-    # Conectamos el nodo invisible con el estado inicial para representar la
-    # convención gráfica de "aquí empieza la lectura".
     diagrama.edge("__inicio__", ESTADO_INICIAL)
 
-    # --- Aristas de transición ---
-    # Construimos la etiqueta de cada transición en el formato estándar para AP:
-    #   "entrada, tope / apilar"
-    # Luego agrupamos por par (origen, destino) para que varias reglas entre
-    # los mismos estados aparezcan en una sola flecha (etiquetas en líneas
-    # separadas), manteniendo el diagrama limpio.
+    # Formato de etiqueta estándar para AP: "entrada, tope / apilar"
     aristas: dict[tuple[str, str], list[str]] = {}
     for (origen, ent, tope), (destino, a_apilar) in TRANSICIONES.items():
         entrada_str = "ε" if ent is None else ent
@@ -386,50 +290,36 @@ def generar_diagrama() -> None:
         aristas.setdefault((origen, destino), []).append(etiqueta)
 
     for (origen, destino), etiquetas in aristas.items():
-        # Ordenamos las etiquetas para que el diagrama sea determinista entre
-        # ejecuciones (los dicts de Python no garantizan orden de inserción
-        # estable ante distintas versiones del intérprete).
         etiqueta_final = "\n".join(sorted(etiquetas))
         diagrama.edge(origen, destino, label=etiqueta_final)
 
-    # Renderizamos el diagrama.  cleanup=True elimina el archivo .gv intermedio
-    # para no dejar archivos temporales en el directorio.
     import os
     carpeta = "AP"
     os.makedirs(carpeta, exist_ok=True)
     nombre_archivo = os.path.join(carpeta, "diagrama_ap")
-    diagrama.render(nombre_archivo, cleanup=True)
+    diagrama.render(nombre_archivo, cleanup=True)  # cleanup=True elimina el .gv temporal
     print(f"\nDiagrama guardado como '{nombre_archivo}.png'")
 
 
-# ---------------------------------------------------------------------------
-# Diagrama del recorrido con Graphviz
-# ---------------------------------------------------------------------------
+# =====================================================
+# DIAGRAMA DEL RECORRIDO (Graphviz + Pillow)
+# =====================================================
 
+# Genera un PNG con el recorrido resaltado y la tabla de IDs (con columna de pila) al pie.
 def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     """
-    Genera un PNG compuesto: arriba el diagrama con el recorrido resaltado y
-    abajo una tabla con las descripciones instantáneas (IDs) del autómata.
+    Genera un PNG: diagrama con recorrido resaltado + tabla de IDs al pie.
 
-    Una descripción instantánea del AP es una terna (estado, entrada_restante, pila).
-    El AP tiene dos dimensiones de memoria: estado actual y pila.  La pila es la
-    clave para distinguir cadenas como "ab", "aabb" y "aaabbb" que usan las mismas
-    aristas del diagrama pero tienen evoluciones de pila completamente distintas.
+    La tabla incluye la columna Pila (tope a la derecha), que es el dato clave
+    para distinguir cadenas como "ab", "aabb" y "aaabbb" en el mismo diagrama.
 
-    Usamos Pillow para combinar ambas imágenes verticalmente porque graphviz no
-    posiciona bien una tabla como "pie" de un diagrama horizontal.
+    Args:
+        cadena (str): Cadena procesada (puede ser vacía).
+        traza (list): Lista de (estado_origen, símbolo_o_None, tope, estado_destino, pila).
+        ids (list): Lista de (estado, entrada_restante, pila).
 
-    La tabla solo aparece en los PNGs individuales y no en el diagrama combinado
-    de varias cadenas, para no saturar esa imagen cuando hay muchas entradas.
-
-    Parámetros
-    ----------
-    cadena : str
-        Cadena que se procesó (puede ser la cadena vacía).
-    traza : list
-        Lista de tuplas (estado_origen, símbolo_o_None, tope, estado_destino, pila).
-    ids : list
-        Descripciones instantáneas: lista de tuplas (estado, entrada_restante, pila).
+    Returns:
+        None
     """
     try:
         from graphviz import Digraph
@@ -438,6 +328,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
         print("    Instalala con:  pip install graphviz")
         return
 
+    # --- 1. Determinar estado final y aceptación ---
     if traza:
         estado_final = traza[-1][3]
     else:
@@ -454,6 +345,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     sufijo = cadena if cadena else "epsilon"
     sufijo_seguro = "".join(c if c.isalnum() or c in "-_" else "_" for c in sufijo)
 
+    # --- 2. Construir el diagrama con recorrido resaltado ---
     diagrama = Digraph(name=f"recorrido_AP_{sufijo_seguro}", format="png")
     diagrama.attr(rankdir="LR", fontname="Helvetica")
     diagrama.node("__inicio__", shape="none", width="0", label="")
@@ -498,11 +390,9 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
         tmp_diag  = os.path.join(tmp_dir, "_diag_ap_tmp")
         tmp_tabla = os.path.join(tmp_dir, "_tabla_ap_tmp")
 
-        # Paso 1: renderizamos el diagrama en un archivo temporal.
+        # --- 3. Generar la tabla HTML de IDs ---
         diagrama.render(tmp_diag, cleanup=True)
 
-        # Paso 2: construimos la tabla HTML de IDs.
-        # Columnas: Paso | Estado | Entrada restante | Pila | Acción
         encabezado_html = (
             '<TR>'
             '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Paso</FONT></B></TD>'
@@ -534,8 +424,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
                 accion += " [ACEPTA]" if aceptada else " [RECHAZA]"
 
             entrada_display = entrada_id if entrada_id else "&#949;"
-            # La pila se muestra con el tope a la derecha: "".join(pila) donde
-            # pila[-1] es el tope.  Convención: el último carácter es el tope.
+            # pila[-1] es el tope; "".join muestra la pila con el tope a la derecha
             pila_display = "".join(pila_id) if pila_id else "&#949;"
 
             filas_html.append(
@@ -560,7 +449,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
         tabla_dot.node("t", label=label_tabla, shape="plaintext")
         tabla_dot.render(tmp_tabla, cleanup=True)
 
-        # Paso 3: combinamos verticalmente diagrama y tabla.
+        # --- 4. Combinar diagrama y tabla con Pillow ---
         img_diag  = Image.open(tmp_diag  + ".png").convert("RGB")
         img_tabla = Image.open(tmp_tabla + ".png").convert("RGB")
 
@@ -574,7 +463,6 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
                                     img_diag.height + padding))
         combinada.save(nombre_archivo + ".png")
 
-        # Paso 4: eliminamos los temporales.
         img_diag.close()
         img_tabla.close()
         os.remove(tmp_diag  + ".png")
@@ -586,15 +474,20 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     print(f"  Recorrido guardado como '{nombre_archivo}.png'")
 
 
-# ---------------------------------------------------------------------------
-# Modo interactivo
-# ---------------------------------------------------------------------------
+# =====================================================
+# MODO INTERACTIVO
+# =====================================================
 
+# Loop donde el usuario ingresa cadenas y el autómata las procesa una a una.
 def modo_interactivo() -> None:
     """
-    Inicia un loop interactivo donde el usuario ingresa cadenas y el autómata
-    las procesa mostrando el resultado paso a paso y generando el diagrama
-    del recorrido.
+    Inicia un loop interactivo: el usuario ingresa cadenas, el autómata las
+    procesa y genera el diagrama del recorrido.
+
+    Acepta múltiples cadenas separadas por comas. Escribí 'salir' para terminar.
+
+    Returns:
+        None
     """
     alfabeto_str = "{" + ", ".join(sorted(ALFABETO)) + "}"
     print("\n" + "=" * 60)
@@ -610,12 +503,9 @@ def modo_interactivo() -> None:
             if entrada.strip().lower() == "salir":
                 print("\n  ¡Hasta luego!")
                 break
-            # Si el usuario separa varias cadenas con comas, las procesamos
-            # todas en orden, igual que si las hubiera ingresado de a una.
+            # Permite ingresar varias cadenas separadas por coma
             cadenas = [c.strip() for c in entrada.split(",")]
             for cadena in cadenas:
-                # Validamos antes de procesar: si la cadena contiene símbolos
-                # fuera del alfabeto la ignoramos sin imprimir nada.
                 if cadena != "" and not all(c in ALFABETO for c in cadena):
                     continue
                 aceptada, traza, ids = procesar_cadena(cadena)
@@ -631,21 +521,17 @@ def modo_interactivo() -> None:
         print("\n\n  Interrupción recibida. ¡Hasta luego!")
 
 
-# ---------------------------------------------------------------------------
-# Punto de entrada
-# ---------------------------------------------------------------------------
+# =====================================================
+# PUNTO DE ENTRADA
+# =====================================================
 
 if __name__ == "__main__":
     print("=" * 60)
     print("  AP — Lenguaje L = { aⁿbⁿ | n ≥ 1 }")
     print("=" * 60)
 
-    # 1. Mostrar la tabla de transición.
     imprimir_tabla_transicion()
 
-    # 2. Generar el diagrama base del autómata (sin recorrido).
-    #    Envuelto en try/except para que un Ctrl+C o la ausencia del ejecutable
-    #    'dot' de Graphviz no aborte el script antes de llegar al modo interactivo.
     try:
         generar_diagrama()
     except KeyboardInterrupt:
@@ -658,5 +544,4 @@ if __name__ == "__main__":
         else:
             raise
 
-    # 3. Entrar al modo interactivo para procesar cadenas ingresadas por el usuario.
     modo_interactivo()

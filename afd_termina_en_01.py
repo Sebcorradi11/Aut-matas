@@ -34,15 +34,11 @@ Trabajo  : TP1 — Autómata 1 de 3 (AFD)
 Institución: Universidad de la Cuenca del Plata
 """
 
-# ---------------------------------------------------------------------------
-# Importaciones
-# ---------------------------------------------------------------------------
+# =====================================================
+# IMPORTACIONES
+# =====================================================
 
-# Pillow se usa en graficar_recorrido para combinar verticalmente la imagen del
-# diagrama (generada con graphviz) con la tabla de descripciones instantáneas
-# (también generada con graphviz como nodo HTML).  Usamos Pillow porque graphviz
-# no posiciona bien una tabla como "pie" de un diagrama horizontal; combinar dos
-# PNGs con Pillow permite controlar el layout con precisión.
+# Pillow combina el diagrama con la tabla de IDs en graficar_recorrido.
 try:
     from PIL import Image
     _PIL_DISPONIBLE = True
@@ -50,28 +46,16 @@ except ImportError:
     _PIL_DISPONIBLE = False
 
 
-# ---------------------------------------------------------------------------
-# Definición del autómata
-# ---------------------------------------------------------------------------
+# =====================================================
+# DEFINICIÓN DEL AUTÓMATA
+# =====================================================
 
-# Conjunto de estados como conjunto de Python; usamos strings para que sean
-# legibles al imprimir transiciones y en el diagrama.
 ESTADOS = {"q0", "q1", "q2"}
-
-# Alfabeto explícito: lo necesitamos para validar cada símbolo antes de
-# consultar la tabla de transición y para recorrer columnas en la tabla.
 ALFABETO = {"0", "1"}
-
-# Estado inicial
 ESTADO_INICIAL = "q0"
-
-# Conjunto de estados finales (de aceptación).  Es un conjunto para que la
-# verificación de pertenencia sea O(1) aunque haya muchos estados finales.
 ESTADOS_FINALES = {"q2"}
 
-# Función de transición representada como diccionario (estado, símbolo) → estado.
-# Esta estructura es la traducción directa de la tabla δ de la definición formal:
-# clave = par (estado actual, símbolo leído), valor = estado destino.
+# (estado, símbolo) → estado destino
 TRANSICIONES = {
     ("q0", "0"): "q1",
     ("q0", "1"): "q0",
@@ -82,115 +66,80 @@ TRANSICIONES = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Procesamiento de cadenas
-# ---------------------------------------------------------------------------
+# =====================================================
+# PROCESAMIENTO DE CADENAS
+# =====================================================
 
+# Ejecuta el autómata sobre una cadena y devuelve si es aceptada.
 def procesar_cadena(cadena: str) -> tuple:
     """
-    Simula la ejecución del AFD sobre `cadena` símbolo a símbolo.
+    Simula el AFD símbolo a símbolo e imprime cada transición aplicada.
 
-    Por cada símbolo imprime la transición aplicada con notación formal:
-        δ(estado_actual, símbolo) = estado_siguiente
+    Args:
+        cadena (str): Cadena binaria a procesar. Puede ser vacía.
 
-    Retorna una tupla (aceptada, traza) donde aceptada es True si la cadena
-    es aceptada (el estado final pertenece a F) y traza es la lista de pasos
-    (estado_origen, símbolo, estado_destino) registrados durante la ejecución.
-    Devolver la traza desde aquí (en lugar de reconstruirla después) garantiza
-    que coincida exactamente con lo que se imprimió por consola, sin riesgo
-    de inconsistencias si la cadena contiene símbolos inválidos.
-
-    Parámetros
-    ----------
-    cadena : str
-        Cadena binaria a procesar.  Puede ser la cadena vacía.
-
-    Retorna
-    -------
-    tuple
-        (True, traza) → aceptada, (False, traza) → rechazada.
+    Returns:
+        tuple: (aceptada, traza, ids) donde traza es lista de (origen, símbolo,
+               destino) e ids es lista de (estado, entrada_restante).
     """
     print(f"\nProcesando cadena: '{cadena}'")
 
-    # Caso especial: cadena vacía.  El AFD permanece en q0, que no es estado
-    # final, por lo que la cadena vacía siempre se rechaza.
     if cadena == "":
         print("  (cadena vacía — no se aplica ninguna transición)")
         print(f"  Estado final: {ESTADO_INICIAL}  →  RECHAZADA")
-        # ID única: el autómata parte y permanece en el estado inicial con entrada vacía.
         return False, [], [(ESTADO_INICIAL, "")]
 
     estado_actual = ESTADO_INICIAL
-    # La traza registra cada paso como (origen, símbolo, destino) para que
-    # graficar_recorrido pueda resaltar exactamente las aristas recorridas.
     traza: list = []
-    # Las IDs (descripciones instantáneas) registran la "foto" del autómata en cada
-    # instante.  Para el AFD la ID es (estado, entrada_restante), ya que la única
-    # memoria del modelo es el estado actual.  El formato difiere entre autómatas:
-    # el AFND usa (conjunto_estados, entrada) y el AP usa (estado, entrada, pila).
     ids: list = [(ESTADO_INICIAL, cadena)]
 
     for i, simbolo in enumerate(cadena):
-        # Validación: rechazamos de inmediato si el símbolo no es del alfabeto,
-        # porque consultar TRANSICIONES con una clave inexistente lanzaría KeyError
-        # y daría un error confuso al usuario.
         if simbolo not in ALFABETO:
             print(f"  ERROR: el símbolo '{simbolo}' no pertenece al alfabeto Σ = {ALFABETO}")
             return False, traza, ids
 
         estado_siguiente = TRANSICIONES[(estado_actual, simbolo)]
-        # Notación formal de transición: δ(estado, símbolo) = nuevo_estado
         print(f"  δ({estado_actual}, {simbolo}) = {estado_siguiente}")
         traza.append((estado_actual, simbolo, estado_siguiente))
         estado_actual = estado_siguiente
-        # Guardamos la ID post-transición: nuevo estado + lo que queda por leer.
-        # cadena[i+1:] es "" cuando i es el último índice, que es correcto.
         ids.append((estado_actual, cadena[i + 1:]))
 
-    # La cadena es aceptada si y solo si el estado en el que detuvimos la
-    # lectura pertenece al conjunto de estados finales F.
     aceptada = estado_actual in ESTADOS_FINALES
     veredicto = "ACEPTADA" if aceptada else "RECHAZADA"
     print(f"  Estado final: {estado_actual}  →  {veredicto}")
     return aceptada, traza, ids
 
 
-# ---------------------------------------------------------------------------
-# Tabla de transición
-# ---------------------------------------------------------------------------
+# =====================================================
+# TABLA DE TRANSICIÓN (consola)
+# =====================================================
 
+# Imprime la tabla δ con bordes Unicode en la consola.
 def imprimir_tabla_transicion() -> None:
     """
-    Imprime la tabla de transición δ en la consola usando caracteres de cuadro
-    Unicode para que sea legible y presentable en el informe.
+    Imprime la tabla de transición δ con bordes Unicode.
 
-    Convenciones de la tabla:
-        →  marca el estado inicial (q0).
-        *  marca los estados finales (q2).
+    Convenciones: → estado inicial, * estado final.
+
+    Returns:
+        None
     """
-    # Ordenamos los estados y símbolos para que la tabla siempre se muestre
-    # en el mismo orden, independientemente del orden interno del set/dict.
     estados_ord = sorted(ESTADOS)
     simbolos_ord = sorted(ALFABETO)
 
-    # Calculamos el ancho de la columna de estados considerando que pueden
-    # llevar el prefijo "→ " o "* " (2 caracteres + espacio).
     ancho_estado = max(len(e) + 3 for e in estados_ord)  # +3 para "→ " o "* "
-    ancho_simbolo = 6  # ancho fijo para las columnas de símbolos
+    ancho_simbolo = 6
 
-    # Línea superior de la tabla
     sep_top = (
         "┌" + "─" * ancho_estado + "┬"
         + ("┬".join("─" * ancho_simbolo for _ in simbolos_ord))
         + "┐"
     )
-    # Línea separadora intermedia
     sep_mid = (
         "├" + "─" * ancho_estado + "┼"
         + ("┼".join("─" * ancho_simbolo for _ in simbolos_ord))
         + "┤"
     )
-    # Línea inferior
     sep_bot = (
         "└" + "─" * ancho_estado + "┴"
         + ("┴".join("─" * ancho_simbolo for _ in simbolos_ord))
@@ -200,25 +149,18 @@ def imprimir_tabla_transicion() -> None:
     print("\nTabla de transición δ:")
     print(sep_top)
 
-    # Encabezado: columna de estado + una columna por símbolo del alfabeto
     encabezado_simbolos = "".join(
         f"│{s:^{ancho_simbolo}}" for s in simbolos_ord
     )
     print(f"│{'δ':^{ancho_estado}}{encabezado_simbolos}│")
     print(sep_mid)
 
-    # Filas: una por estado
     for estado in estados_ord:
-        # Prefijo que indica si es inicial (→) y/o final (*).
-        # En este AFD q0 es inicial y q2 es final; no coinciden, pero el
-        # código es general por si en otro autómata un estado fuera ambos.
         prefijo = ""
         if estado == ESTADO_INICIAL:
             prefijo += "→ "
         if estado in ESTADOS_FINALES:
             prefijo += "* "
-        # Alineamos la celda de estado a la izquierda para que los prefijos
-        # queden pegados al nombre del estado.
         celda_estado = f"{prefijo}{estado}"
 
         celdas_transicion = "".join(
@@ -231,62 +173,45 @@ def imprimir_tabla_transicion() -> None:
     print("  → estado inicial     * estado(s) final(es)")
 
 
-# ---------------------------------------------------------------------------
-# Diagrama con Graphviz
-# ---------------------------------------------------------------------------
+# =====================================================
+# DIAGRAMA BASE (Graphviz)
+# =====================================================
 
+# Genera el diagrama del AFD y lo guarda como AFD/diagrama_afd.png.
 def generar_diagrama() -> None:
     """
-    Genera el diagrama de transición del AFD y lo guarda como diagrama_afd.png.
+    Renderiza el diagrama de transición del AFD con Graphviz (formato PNG).
 
-    Usamos la librería `graphviz` de Python (wrapper sobre el binario de Graphviz)
-    para describir el grafo en formato DOT y renderizarlo a PNG.
+    Usa rankdir="LR" y un nodo invisible "__inicio__" para la flecha de inicio.
+    Agrupa símbolos con el mismo par (origen, destino) en una sola arista.
 
-    Decisiones de diseño:
-        - rankdir="LR": el diagrama crece de izquierda a derecha, que es la
-          convención más común en libros de Teoría de la Computación.
-        - Nodo invisible "__inicio__": la flecha de inicio que apunta al estado
-          inicial (q0) no tiene un estado fuente real; se modela con un nodo
-          invisible de tamaño 0.
-        - doublecircle para estados finales, circle para los demás: notación
-          estándar de autómatas.
+    Returns:
+        None
     """
     try:
         from graphviz import Digraph
     except ImportError:
-        # Avisamos con claridad para que el usuario sepa qué instalar,
-        # en lugar de dejar que Python lance un ImportError críptico.
         print("\n[!] La librería 'graphviz' no está instalada.")
         print("    Instalala con:  pip install graphviz")
         print("    También necesitás el binario de Graphviz del sistema:")
         print("    https://graphviz.org/download/")
         return
 
-    # Creamos un dígrafo (grafo dirigido) con el motor "dot", que respeta
-    # jerarquías y es el más adecuado para autómatas.
     diagrama = Digraph(name="AFD_termina_en_01", format="png")
     diagrama.attr(rankdir="LR", fontname="Helvetica")
 
-    # --- Nodos ---
-    # Nodo invisible que sirve como origen de la flecha de inicio.
+    # Nodo invisible como origen de la flecha de inicio
     diagrama.node("__inicio__", shape="none", width="0", label="")
 
     for estado in sorted(ESTADOS):
         if estado in ESTADOS_FINALES:
-            # Los estados finales se dibujan con doble círculo (notación estándar).
             diagrama.node(estado, shape="doublecircle")
         else:
             diagrama.node(estado, shape="circle")
 
-    # --- Flecha de inicio ---
-    # Conectamos el nodo invisible con el estado inicial para representar la
-    # convención gráfica de "aquí empieza la lectura".
     diagrama.edge("__inicio__", ESTADO_INICIAL)
 
-    # --- Aristas de transición ---
-    # Agrupamos las transiciones por par (origen, destino) para que múltiples
-    # símbolos entre los mismos estados aparezcan en una sola arista etiquetada
-    # con "0,1" en lugar de dos aristas separadas (más limpio visualmente).
+    # Agrupamos por (origen, destino) para unir símbolos en una sola arista
     aristas: dict[tuple[str, str], list[str]] = {}
     for (origen, simbolo), destino in TRANSICIONES.items():
         aristas.setdefault((origen, destino), []).append(simbolo)
@@ -295,46 +220,30 @@ def generar_diagrama() -> None:
         etiqueta = ", ".join(sorted(simbolos))
         diagrama.edge(origen, destino, label=etiqueta)
 
-    # Renderizamos el diagrama.  cleanup=True elimina el archivo .gv intermedio
-    # para no dejar archivos temporales en el directorio.
     import os
     carpeta = "AFD"
     os.makedirs(carpeta, exist_ok=True)
     nombre_archivo = os.path.join(carpeta, "diagrama_afd")
-    diagrama.render(nombre_archivo, cleanup=True)
+    diagrama.render(nombre_archivo, cleanup=True)  # cleanup=True elimina el .gv temporal
     print(f"\nDiagrama guardado como '{nombre_archivo}.png'")
 
 
-# ---------------------------------------------------------------------------
-# Diagrama del recorrido con Graphviz
-# ---------------------------------------------------------------------------
+# =====================================================
+# DIAGRAMA DEL RECORRIDO (Graphviz + Pillow)
+# =====================================================
 
+# Genera un PNG con el recorrido resaltado y la tabla de IDs al pie.
 def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     """
-    Genera un PNG compuesto: arriba el diagrama con el recorrido resaltado y
-    abajo una tabla con las descripciones instantáneas (IDs) del autómata.
+    Genera un PNG: diagrama con recorrido resaltado + tabla de IDs al pie.
 
-    Una descripción instantánea del AFD es un par (estado, entrada_restante).
-    La única memoria del modelo es el estado actual; no hay pila ni subconjunto
-    de estados activos.  Esto contrasta con el AFND —que necesita un conjunto de
-    estados— y el AP —que necesita estado más pila—, reflejando las diferencias
-    en el poder de memoria de cada modelo (Hopcroft et al., 2007; Sipser, 2013).
+    Args:
+        cadena (str): Cadena procesada (puede ser vacía).
+        traza (list): Lista de (estado_origen, símbolo, estado_destino).
+        ids (list): Lista de (estado, entrada_restante).
 
-    Usamos Pillow para combinar ambas imágenes verticalmente porque graphviz no
-    posiciona bien una tabla como "pie" de un diagrama horizontal.  Combinar PNGs
-    con Pillow permite controlar el layout con precisión sin depender del motor DOT.
-
-    La tabla solo aparece en los PNGs individuales y no en el diagrama combinado
-    de varias cadenas, para no saturar esa imagen cuando hay muchas entradas.
-
-    Parámetros
-    ----------
-    cadena : str
-        Cadena que se procesó (puede ser la cadena vacía).
-    traza : list
-        Lista de tuplas (estado_origen, símbolo, estado_destino).
-    ids : list
-        Descripciones instantáneas: lista de tuplas (estado, entrada_restante).
+    Returns:
+        None
     """
     try:
         from graphviz import Digraph
@@ -343,7 +252,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
         print("    Instalala con:  pip install graphviz")
         return
 
-    # Determinamos el estado final alcanzado y si la cadena fue aceptada.
+    # --- 1. Determinar estado final y aceptación ---
     if traza:
         estado_final = traza[-1][2]
     else:
@@ -360,6 +269,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     sufijo = cadena if cadena else "epsilon"
     sufijo_seguro = "".join(c if c.isalnum() or c in "-_" else "_" for c in sufijo)
 
+    # --- 2. Construir el diagrama con recorrido resaltado ---
     diagrama = Digraph(name=f"recorrido_AFD_{sufijo_seguro}", format="png")
     diagrama.attr(rankdir="LR", fontname="Helvetica")
     diagrama.node("__inicio__", shape="none", width="0", label="")
@@ -397,16 +307,13 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
     nombre_archivo = os.path.join(carpeta, f"recorrido_afd_{sufijo_seguro}")
 
     if _PIL_DISPONIBLE:
-        # --- Combinamos diagrama + tabla de IDs con Pillow ---
         tmp_dir   = tempfile.gettempdir()
         tmp_diag  = os.path.join(tmp_dir, "_diag_afd_tmp")
         tmp_tabla = os.path.join(tmp_dir, "_tabla_afd_tmp")
 
-        # Paso 1: renderizamos el diagrama en un archivo temporal.
+        # --- 3. Generar la tabla HTML de IDs ---
         diagrama.render(tmp_diag, cleanup=True)
 
-        # Paso 2: construimos la tabla HTML de IDs y la renderizamos.
-        # Columnas: Paso | Estado | Entrada restante | Acción
         encabezado_html = (
             '<TR>'
             '<TD BGCOLOR="#E0E0E0"><B><FONT FACE="Arial">Paso</FONT></B></TD>'
@@ -432,8 +339,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
             if es_ultima:
                 accion += " [ACEPTA]" if aceptada else " [RECHAZA]"
 
-            # La entrada restante vacía se muestra como ε en la tabla.
-            entrada_display = entrada_id if entrada_id else "&#949;"
+            entrada_display = entrada_id if entrada_id else "&#949;"  # ε si vacío
 
             filas_html.append(
                 f'<TR>'
@@ -456,7 +362,7 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
         tabla_dot.node("t", label=label_tabla, shape="plaintext")
         tabla_dot.render(tmp_tabla, cleanup=True)
 
-        # Paso 3: combinamos verticalmente las dos imágenes con Pillow.
+        # --- 4. Combinar diagrama y tabla con Pillow ---
         img_diag  = Image.open(tmp_diag  + ".png").convert("RGB")
         img_tabla = Image.open(tmp_tabla + ".png").convert("RGB")
 
@@ -470,28 +376,31 @@ def graficar_recorrido(cadena: str, traza: list, ids: list) -> None:
                                     img_diag.height + padding))
         combinada.save(nombre_archivo + ".png")
 
-        # Paso 4: eliminamos los temporales para no ensuciar el directorio.
         img_diag.close()
         img_tabla.close()
         os.remove(tmp_diag  + ".png")
         os.remove(tmp_tabla + ".png")
     else:
-        # Sin Pillow generamos solo el diagrama (sin la tabla de IDs).
         diagrama.render(nombre_archivo, cleanup=True)
         print("  [!] Instalá Pillow para incluir la tabla de IDs: pip install Pillow")
 
     print(f"  Recorrido guardado como '{nombre_archivo}.png'")
 
 
-# ---------------------------------------------------------------------------
-# Modo interactivo
-# ---------------------------------------------------------------------------
+# =====================================================
+# MODO INTERACTIVO
+# =====================================================
 
+# Loop donde el usuario ingresa cadenas y el autómata las procesa una a una.
 def modo_interactivo() -> None:
     """
-    Inicia un loop interactivo donde el usuario ingresa cadenas y el autómata
-    las procesa mostrando el resultado paso a paso y generando el diagrama
-    del recorrido.
+    Inicia un loop interactivo: el usuario ingresa cadenas, el autómata las
+    procesa y genera el diagrama del recorrido.
+
+    Acepta múltiples cadenas separadas por comas. Escribí 'salir' para terminar.
+
+    Returns:
+        None
     """
     alfabeto_str = "{" + ", ".join(sorted(ALFABETO)) + "}"
     print("\n" + "=" * 60)
@@ -507,12 +416,9 @@ def modo_interactivo() -> None:
             if entrada.strip().lower() == "salir":
                 print("\n  ¡Hasta luego!")
                 break
-            # Si el usuario separa varias cadenas con comas, las procesamos
-            # todas en orden, igual que si las hubiera ingresado de a una.
+            # Permite ingresar varias cadenas separadas por coma
             cadenas = [c.strip() for c in entrada.split(",")]
             for cadena in cadenas:
-                # Validamos antes de procesar: si la cadena contiene símbolos
-                # fuera del alfabeto la ignoramos sin imprimir nada.
                 if cadena != "" and not all(c in ALFABETO for c in cadena):
                     continue
                 aceptada, traza, ids = procesar_cadena(cadena)
@@ -528,21 +434,17 @@ def modo_interactivo() -> None:
         print("\n\n  Interrupción recibida. ¡Hasta luego!")
 
 
-# ---------------------------------------------------------------------------
-# Punto de entrada
-# ---------------------------------------------------------------------------
+# =====================================================
+# PUNTO DE ENTRADA
+# =====================================================
 
 if __name__ == "__main__":
     print("=" * 60)
     print("  AFD — Cadenas binarias que terminan en '01'")
     print("=" * 60)
 
-    # 1. Mostrar la tabla de transición.
     imprimir_tabla_transicion()
 
-    # 2. Generar el diagrama base del autómata (sin recorrido).
-    #    Envuelto en try/except para que un Ctrl+C o la ausencia del ejecutable
-    #    'dot' de Graphviz no aborte el script antes de llegar al modo interactivo.
     try:
         generar_diagrama()
     except KeyboardInterrupt:
@@ -555,5 +457,4 @@ if __name__ == "__main__":
         else:
             raise
 
-    # 3. Entrar al modo interactivo para procesar cadenas ingresadas por el usuario.
     modo_interactivo()
